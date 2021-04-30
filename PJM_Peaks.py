@@ -45,7 +45,7 @@ def prelim_loads(file_path):
     """Build first load file on new installation"""
 	#{PJM : {time: load}}
     init_peak_loads={}
-    init_peak_loads = {'PJM' : {1:1, 2:2, 3:3, 4:4, 5:5},
+    init_peak_loads = {'PJM RTO Total' : {1:1, 2:2, 3:3, 4:4, 5:5},
                         'COMED': {1:1, 2:2, 3:3, 4:4, 5:5}}
     with open(file_path, 'w') as outfile:
         json.dump(init_peak_loads, outfile, indent=4)
@@ -74,10 +74,10 @@ def import_load_data(data_file, x_lines=0):
 		if no x_lines is given whole file will be read in"""
     with open(data_file, 'r') as read_obj:
         csv_dict_reader = DictReader(read_obj)
-    	if x_lines==0:
-        	all_loads=list(csv_dict_reader)
-    	else:
-        	all_loads=list(csv_dict_reader)[-x_lines:]
+        if x_lines==0:
+            all_loads=list(csv_dict_reader)
+        else:
+            all_loads=list(csv_dict_reader)[-x_lines:]
     return all_loads
 
 def generation_slope(current_load, beginning_load, look_back):
@@ -89,7 +89,7 @@ def generation_slope(current_load, beginning_load, look_back):
 
 def true_max_load(RTO, load_data, cur_index):
     """Gets the max for the current hour"""
-    cur_time=load_data[x]['Time']	#current time in mills
+    cur_time=load_data[cur_index]['Time']	#current time in mills
     dt_obj=datetime.fromtimestamp(float(cur_time)/1000) #convert mills to datetime object
     cur_minutes = dt_obj.minute #extract minutes
     look_back = int(cur_minutes/5) #how many steps to look back
@@ -106,20 +106,20 @@ def cur_hour(mills):
 
 def peak_load_cleanup(RTO, peak_dict, load_data):
     """clean up the peak load file"""
-    last_time=load_data[len(load_data)]['Time']
+    last_time=load_data[len(load_data)-1]['Time']
     dt_obj=datetime.fromtimestamp(float(last_time)/1000) #convert mills to datetime object
     new_dt_obj=dt_obj.replace(minute=0, second=0, microsecond=0)
     last_time_on_hour=new_dt_obj.timestamp()*1000 #Current hour, last full hour will be less then this number
-    times=map(cur_hours, list(peak_loads[RTO].keys())) #change list to on the hour
+    times=map(cur_hour, list(peak_loads[RTO].keys())) #change list to on the hour
 	#https://stackoverflow.com/questions/34569966/remove-duplicates-in-python-list-but-remember-the-index
     unique_times=set()
     remove_index=[] #index of doubles that need to be removed
     for i, elem in enumerate(times):
-        if elem not in seen:
+        if elem not in unique_times:
             pass
         else:
             remove_index.append(i)
-            seen.add(elem)
+            unique_times.add(elem)
         if len(remove_index)>0: #If there are doubles remove
             dict_keys=list(peak_loads[RTO].keys()) #get a list of dict keys
             for item in remove_index:
@@ -132,7 +132,7 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
         gen_slope=generation_slope(float(load_data[x][RTO]),float(load_data[x-12][RTO]),12)
         if gen_slope>0: #Do not do predictions on decreasing loads
 			#Waring Prediction
-            predicted_max=(multipler*gen_slope)*12+float(load_data[x][RTO])
+            predicted_max=(multiplier*gen_slope)*12+float(load_data[x][RTO])
             if predicted_max > min(list(peak_loads[RTO].values())): #at the current load growth will be a peak in next hour
                 _logger.info('Peak Warning')
                 status={'status' : 'WARNING', 'RTO': RTO}
@@ -182,7 +182,7 @@ if __name__=="__main__":
     if len(load_data) < lookback:
         _logger.critical('Lookback larger then dataset, Exiting')
         raise SystemExit
-    peak_loads=peak_load_cleanup('PMJ RTO Total',peak_loads,load_data)
+    peak_loads=peak_load_cleanup('PJM RTO Total',peak_loads,load_data)
     peak_loads=peak_load_cleanup('COMED',peak_loads,load_data)
-    prediction_algorithm('PMJ RTO Total', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
+    prediction_algorithm('PJM RTO Total', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
     prediction_algorithm('COMED', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
