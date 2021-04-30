@@ -94,8 +94,14 @@ def true_max_load(RTO, load_data, cur_index):
     cur_minutes = dt_obj.minute #extract minutes
     look_back = int(cur_minutes/5) #how many steps to look back
     temp_loads=[]
-    for x in range (cur_index-look_back,cur_index):
-        temp_loads.append(float(load_data[x][RTO]))
+    if cur_minutes >= 5:
+        for x in range (cur_index-look_back,cur_index):
+            temp_loads.append(float(load_data[x][RTO]))
+    else:
+        _logger.debug(float(load_data[cur_index][RTO]))
+        temp_loads.append(float(load_data[cur_index][RTO]))
+    _logger.debug('Current Minute: %s', cur_minutes)
+    _logger.debug(temp_loads)
     return max(temp_loads)
 
 def cur_hour(mills):
@@ -103,6 +109,12 @@ def cur_hour(mills):
     dt_obj=datetime.fromtimestamp(float(mills)/1000) #convert mills to datetime object
     new_dt_obj=dt_obj.replace(minute=0, second=0, microsecond=0)
     return new_dt_obj.timestamp()*1000
+
+def cur_min(mills):
+    """Get current minute"""
+    dt_obj=datetime.fromtimestamp(float(mills)/1000) #convert mills to datetime object
+    return dt_obj.minute #extract minutes
+
 
 def peak_load_cleanup(RTO, peak_dict, load_data):
     """clean up the peak load file"""
@@ -129,6 +141,10 @@ def peak_load_cleanup(RTO, peak_dict, load_data):
 def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path):
     """heart of the program"""
     for x in range(13, len(load_data)): #start a 13 to miss header and have 1hr of data
+        _logger.debug('prediction_algorithm iteration %s:',x)
+        _logger.debug('Peak Loads: %s', peak_loads)
+        if cur_min(load_data[x]['Time'])<5: #every hour clean up peak loads file
+            peak_load_cleanup(RTO, peak_loads, load_data)
         gen_slope=generation_slope(float(load_data[x][RTO]),float(load_data[x-12][RTO]),12)
         if gen_slope>0: #Do not do predictions on decreasing loads
 			#Waring Prediction
@@ -136,22 +152,24 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
             if predicted_max > min(list(peak_loads[RTO].values())): #at the current load growth will be a peak in next hour
                 _logger.info('Peak Warning')
                 status={'status' : 'WARNING', 'RTO': RTO}
-		#Actual Peak Logging (should really be checking time, not load to see if current peak is in list)
                 cur_max = true_max_load(RTO, load_data, x) #get max load in the current hour
                 if not (cur_max in list(peak_loads[RTO].values())): #check if current load is in list
                         peaks=list(peak_loads[RTO].values())
+                        _logger.debug('Current Peaks: %s',peaks)
                         times=list(peak_loads[RTO].keys())
                         for y in range(0,4): #loop through peaks to see if new max load is a peak
                             if cur_max > peaks[y]:
                                 _logger.info('Peak')
                                 peaks.insert(y,cur_max)
+                                _logger.debug('Peaks after insert %s', peaks)
                                 times.insert(y,float(load_data[x]['Time']))
                                 temp_dict={}
                                 for z in range(0, len(peaks)):
                                     temp_dict[times[z]]=peaks[z]
-                                    peaks[RTO]=temp_dict
-                                    write_json_file(peaks, peak_file_path)
-                                    break #break for loop to not fill up rest of of list with data
+                                    peak_loads[RTO]=temp_dict
+                                    _logger.debug('Before Writing: %s', peak_loads)
+                                    write_json_file(peak_loads, peak_file_path)
+                                break #as not to fill all subsequent loads with data
 
 if __name__=="__main__":
     sys.excepthook = my_exception_hook #Catches all expections not in try/except
@@ -169,7 +187,7 @@ if __name__=="__main__":
     load_data_file ='/home/chris/python_scripts/production/data/PjmCurrentLoads.csv'
     status_file='/home/chris/python_scripts/production/data/Peak_Status.json'
     SLOPE_MULTIPLIER = 1.03
-    lookback = 0 #look back how far in 5min increments, either 0 or 13+, 0 is look at whole file
+    lookback = 200 #look back how far in 5min increments, either 0 or 13+, 0 is look at whole file
 
     if not file_check(peak_load_file): #check if peak load file exists, if not create file
         prelim_loads(peak_load_file) #create new load file
