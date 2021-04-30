@@ -74,10 +74,10 @@ def import_load_data(data_file, x_lines=0):
 		if no x_lines is given whole file will be read in"""
     with open(data_file, 'r') as read_obj:
         csv_dict_reader = DictReader(read_obj)
-    if x_lines==0:
-        all_loads=list(csv_dict_reader)
-    else:
-        all_loads=list(csv_dict_reader)[-x_lines:]
+    	if x_lines==0:
+        	all_loads=list(csv_dict_reader)
+    	else:
+        	all_loads=list(csv_dict_reader)[-x_lines:]
     return all_loads
 
 def generation_slope(current_load, beginning_load, look_back):
