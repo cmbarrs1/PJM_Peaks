@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-"""This is the doc name for
-code discription"""
+"""This program is to predict the peaks of the PJM and 
+COMED RTO for purposes of reducting capacity charge"""
 
 import sys
 import traceback
@@ -165,9 +165,9 @@ if __name__=="__main__":
                         filename='/home/chris/python_scripts/production/logs/main_log.log',
                         filemode='a')
 
-    peak_load_file =""
-    load_data_file =""
-    status_file=""
+    peak_load_file ='/home/chris/python_scripts/production/data/Peak_Loads.json'
+    load_data_file ='/home/chris/python_scripts/production/data/PjmCurrentLoads.csv'
+    status_file='/home/chris/python_scripts/production/data/Peak_Status.json'
     SLOPE_MULTIPLIER = 1.03
     lookback = 0 #look back how far in 5min increments, either 0 or 13+, 0 is look at whole file
 
