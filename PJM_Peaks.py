@@ -46,7 +46,7 @@ def prelim_loads(file_path):
 	#{PJM : {time: load}}
     init_peak_loads={}
     init_peak_loads = {'PJM RTO Total' : {1:1, 2:2, 3:3, 4:4, 5:5},
-                        'COMED': {1:1, 2:2, 3:3, 4:4, 5:5}}
+                        'COMED Zone': {1:1, 2:2, 3:3, 4:4, 5:5}}
     with open(file_path, 'w') as outfile:
         json.dump(init_peak_loads, outfile, indent=4)
 
@@ -141,7 +141,7 @@ def peak_load_cleanup(RTO, peak_dict, load_data):
 def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path):
     """heart of the program"""
     for x in range(13, len(load_data)): #start a 13 to miss header and have 1hr of data
-        _logger.debug('prediction_algorithm iteration %s:',x)
+        _logger.debug('prediction_algorithm iteration %s: of %s', x, len(load_data)-1)
         _logger.debug('Peak Loads: %s', peak_loads)
         if cur_min(load_data[x]['Time'])<5: #every hour clean up peak loads file
             peak_load_cleanup(RTO, peak_loads, load_data)
@@ -151,6 +151,9 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
             predicted_max=(multiplier*gen_slope)*12+float(load_data[x][RTO])
             if predicted_max > min(list(peak_loads[RTO].values())): #at the current load growth will be a peak in next hour
                 _logger.info('Peak Warning')
+                if x = len(load_data)-1: #check if latest iteration
+                    pass
+                    #here will will send text or dow whatever
                 status={'status' : 'WARNING', 'RTO': RTO}
                 cur_max = true_max_load(RTO, load_data, x) #get max load in the current hour
                 if not (cur_max in list(peak_loads[RTO].values())): #check if current load is in list
@@ -160,11 +163,14 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
                         for y in range(0,4): #loop through peaks to see if new max load is a peak
                             if cur_max > peaks[y]:
                                 _logger.info('Peak')
+                                if x = len(load_data)-1: #check if latest iteration
+                                    pass
+                                    #here will will send text or dow whatever
                                 peaks.insert(y,cur_max)
                                 _logger.debug('Peaks after insert %s', peaks)
                                 times.insert(y,float(load_data[x]['Time']))
                                 temp_dict={}
-                                for z in range(0, len(peaks)):
+                                for z in range(0, 5):
                                     temp_dict[times[z]]=peaks[z]
                                     peak_loads[RTO]=temp_dict
                                     _logger.debug('Before Writing: %s', peak_loads)
@@ -187,7 +193,7 @@ if __name__=="__main__":
     load_data_file ='/home/chris/python_scripts/production/data/PjmCurrentLoads.csv'
     status_file='/home/chris/python_scripts/production/data/Peak_Status.json'
     SLOPE_MULTIPLIER = 1.03
-    lookback = 200 #look back how far in 5min increments, either 0 or 13+, 0 is look at whole file
+    lookback = 20 #look back how far in 5min increments, either 0 or 13+, 0 is look at whole file
 
     if not file_check(peak_load_file): #check if peak load file exists, if not create file
         prelim_loads(peak_load_file) #create new load file
@@ -201,6 +207,6 @@ if __name__=="__main__":
         _logger.critical('Lookback larger then dataset, Exiting')
         raise SystemExit
     peak_loads=peak_load_cleanup('PJM RTO Total',peak_loads,load_data)
-    peak_loads=peak_load_cleanup('COMED',peak_loads,load_data)
+    peak_loads=peak_load_cleanup('COMED Zone',peak_loads,load_data)
     prediction_algorithm('PJM RTO Total', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
-    prediction_algorithm('COMED', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
+    prediction_algorithm('COMED Zone', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
