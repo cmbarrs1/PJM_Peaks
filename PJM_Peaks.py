@@ -151,7 +151,7 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
             predicted_max=(multiplier*gen_slope)*12+float(load_data[x][RTO])
             if predicted_max > min(list(peak_loads[RTO].values())): #at the current load growth will be a peak in next hour
                 _logger.info('Peak Warning')
-                if x = len(load_data)-1: #check if latest iteration
+                if x == len(load_data)-1: #check if latest iteration
                     pass
                     #here will will send text or dow whatever
                 status={'status' : 'WARNING', 'RTO': RTO}
@@ -163,7 +163,7 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
                         for y in range(0,4): #loop through peaks to see if new max load is a peak
                             if cur_max > peaks[y]:
                                 _logger.info('Peak')
-                                if x = len(load_data)-1: #check if latest iteration
+                                if x == len(load_data)-1: #check if latest iteration
                                     pass
                                     #here will will send text or dow whatever
                                 peaks.insert(y,cur_max)
