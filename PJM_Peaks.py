@@ -10,6 +10,7 @@ import json
 from csv import DictReader
 from csv import DictWriter
 from datetime import datetime
+from sms_email import sendtxt
 
 _logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ def my_exception_hook(exp_type, value, tba):
                 f"Type: {exp_type}\n" \
                 f"Value: {value}\n" \
                 f"Traceback: {traceback_details}"
+    sendtxt('PJM Peaks Crash', error_msg)
     logging.critical(error_msg)
 
 def file_check(file_path):
@@ -40,6 +42,11 @@ def file_check(file_path):
         return True
     else:
         return False
+
+def human_readable_time(mills):
+    """Convert mills to human readable"""
+    dt_obj=datetime.fromtimestamp(float(mills)/1000)
+    return dt_obj.strftime("%Y-%m-%d, %I:%M %p")
 
 def prelim_loads(file_path):
     """Build first load file on new installation"""
@@ -142,6 +149,7 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
     """heart of the program"""
     for x in range(13, len(load_data)): #start a 13 to miss header and have 1hr of data
         _logger.debug('prediction_algorithm iteration %s: of %s', x, len(load_data)-1)
+        _logger.debug('Iteration Time: %s', human_readable_time(load_data[x]['Time']))
         _logger.debug('Peak Loads: %s', peak_loads)
         if cur_min(load_data[x]['Time'])<5: #every hour clean up peak loads file
             peak_load_cleanup(RTO, peak_loads, load_data)
@@ -152,7 +160,8 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
             if predicted_max > min(list(peak_loads[RTO].values())): #at the current load growth will be a peak in next hour
                 _logger.info('Peak Warning')
                 if x == len(load_data)-1: #check if latest iteration
-                    pass
+                    msg = RTO + ' ' + float(load_data[x][RTO]) + 'MW @ ' + human_readable_time(load_data[x]['Time'])
+                    sendtxt('Peak Warning', msg)
                     #here will will send text or dow whatever
                 status={'status' : 'WARNING', 'RTO': RTO}
                 cur_max = true_max_load(RTO, load_data, x) #get max load in the current hour
@@ -183,17 +192,24 @@ if __name__=="__main__":
         logging.basicConfig(level=logging.DEBUG,
                         format='%(asctime)s | %(name)s | %(levelname)s | %(message)s')
         logging.debug('Debug Mode Active')
+        logging.debug(sys.argv)
     if 'DEBUG' not in sys.argv:
         logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
                         filename='/home/chris/python_scripts/production/logs/main_log.log',
                         filemode='a')
 
+    lookback_raw=(list(filter(lambda x: '--lookback' in x, sys.argv)))#check if --lookback is in sys.argv
+    if lookback_raw: #if lookback_raw has elements, will evaluate as true
+        lookback_raw_str=lookback_raw[0]
+        lookback=int((lookback_raw_str.split('=')[1]))
+    else:
+        lookback = 0#look back how far in 5min increments, either 0 or 13+, 0 is look at whole file
+
     peak_load_file ='/home/chris/python_scripts/production/data/Peak_Loads.json'
     load_data_file ='/home/chris/python_scripts/production/data/PjmCurrentLoads.csv'
     status_file='/home/chris/python_scripts/production/data/Peak_Status.json'
     SLOPE_MULTIPLIER = 1.03
-    lookback = 20 #look back how far in 5min increments, either 0 or 13+, 0 is look at whole file
 
     if not file_check(peak_load_file): #check if peak load file exists, if not create file
         prelim_loads(peak_load_file) #create new load file
