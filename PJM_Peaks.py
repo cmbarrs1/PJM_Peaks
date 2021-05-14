@@ -12,6 +12,7 @@ import time
 from csv import DictReader
 from csv import DictWriter
 from datetime import datetime
+from datetime import timedelta
 from sms_email import sendtxt
 
 _logger = logging.getLogger(__name__)
@@ -67,10 +68,23 @@ def write_json_file(data, file_path):
 def prelim_status(file_path):
     """Build Status file on new installation"""
     status={}
-    status={'status' : 'NORMAL',
-		'RTO' : 'NONE'}
+    status={'STATUS' : 'NORMAL',
+		'RTO' : 'NONE',
+            'EXPERATION' : 0}
     with open(file_path, 'w') as outfile:
         json.dump(status, outfile, indent=4)
+
+def status_file_check(file_path):
+    """Checks to see if the current status is expired"""
+    cur_status=import_basic_json(file_path)
+    cur_time=datetime.now().timestamp()*1000
+    _logger.debug('Current Time: %s', cur_time)
+    _logger.debug('Status Experation Time: %s',cur_status['EXPERATION'])
+    if float(cur_status['EXPERATION'])<float(cur_time):
+        #Warning/Peak has expired. Set file back to normal
+        prelim_status(file_path)
+    else:
+        _logger.debug('Warnings/Peaks in Effect')
 
 def import_basic_json(file_path):
     """import basic json file to dictionary"""
@@ -118,6 +132,11 @@ def cur_hour(mills):
     dt_obj=datetime.fromtimestamp(float(mills)/1000) #convert mills to datetime object
     new_dt_obj=dt_obj.replace(minute=0, second=0, microsecond=0)
     return new_dt_obj.timestamp()*1000
+def add_x_min(mills, min_to_add):
+    """Add x minutes to current mills"""
+    dt_obj=datetime.fromtimestamp(float(mills)/1000)
+    new_dt_obj=dt_obj+timedelta(minutes = min_to_add)
+    return new_dt_obj.timestamp()*1000
 
 def cur_min(mills):
     """Get current minute"""
@@ -147,7 +166,7 @@ def peak_load_cleanup(RTO, peak_dict, load_data):
                 peak_dict[RTO].pop([dict_keys[item]]) #remove the dict keys based on index determined above.
     return peak_dict
 
-def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path):
+def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path, status_fl):
     """heart of the program"""
     for x in range(13, len(load_data)): #start a 13 to miss header and have 1hr of data
         _logger.debug('prediction_algorithm iteration %s: of %s', x, len(load_data)-1)
@@ -165,7 +184,8 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
                     msg = RTO + ' ' + float(load_data[x][RTO]) + 'MW @ ' + human_readable_time(load_data[x]['Time'])
                     sendtxt('Peak Warning', msg)
                     #here will will send text or dow whatever
-                status={'status' : 'WARNING', 'RTO': RTO}
+                    status={'status' : 'WARNING', 'RTO': RTO, 'EXPERATION':add_x_min(load_data[x]['Time'], 60)}
+                    write_json_file(status, status_fl)
                 cur_max = true_max_load(RTO, load_data, x) #get max load in the current hour
                 if not (cur_max in list(peak_loads[RTO].values())): #check if current load is in list
                         peaks=list(peak_loads[RTO].values())
@@ -177,6 +197,8 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
                                 if x == len(load_data)-1: #check if latest iteration
                                     sendtxt('Peak', msg)
                                     #here will will send text or dow whatever
+                                    status={'status' : 'PEAK', 'RTO': RTO, 'EXPERATION':add_x_min(load_data[x]['Time'], 60)}
+                                    write_json_file(status, status_fl)
                                 peaks.insert(y,cur_max)
                                 _logger.debug('Peaks after insert %s', peaks)
                                 times.insert(y,float(load_data[x]['Time']))
@@ -195,11 +217,13 @@ if __name__=="__main__":
                         format='%(asctime)s | %(name)s | %(levelname)s | %(message)s')
         logging.debug('Debug Mode Active')
         logging.debug(sys.argv)
+        TIME_OUT = 0
     if 'DEBUG' not in sys.argv:
         logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
                         filename='/home/chris/python_scripts/production/logs/main_log.log',
                         filemode='a')
+        TIME_OUT = 60
     os.system("echo 'PJM_Peaks Started' | systemd-cat -t PJM_Peaks.py")
     lookback_raw=(list(filter(lambda x: '--lookback' in x, sys.argv)))#check if --lookback is in sys.argv
     if lookback_raw: #if lookback_raw has elements, will evaluate as true
@@ -212,12 +236,13 @@ if __name__=="__main__":
     load_data_file ='/home/chris/python_scripts/production/data/PjmCurrentLoads.csv'
     status_file='/home/chris/python_scripts/production/data/Peak_Status.json'
     SLOPE_MULTIPLIER = 1.03
-    time.sleep(60)
+    time.sleep(TIME_OUT)
     if not file_check(peak_load_file): #check if peak load file exists, if not create file
         prelim_loads(peak_load_file) #create new load file
     peak_loads=import_basic_json(peak_load_file) #import peak load file
     if not file_check(status_file): #check if status file exists, if not create file
         prelim_status(status_file) #create new status file
+    status_file_check(status_file) #check if current status is expired
     current_status=import_basic_json(status_file) #import status file
     load_data=import_load_data(load_data_file, lookback) #import loads into dictionary
     ####START PREDICTION ALGORITHM########
@@ -226,6 +251,6 @@ if __name__=="__main__":
         raise SystemExit
     peak_loads=peak_load_cleanup('PJM RTO Total',peak_loads,load_data)
     peak_loads=peak_load_cleanup('COMED Zone',peak_loads,load_data)
-    prediction_algorithm('PJM RTO Total', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
-    prediction_algorithm('COMED Zone', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
+    prediction_algorithm('PJM RTO Total', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file, status_file)
+    prediction_algorithm('COMED Zone', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file, status_file)
     os.system("echo 'PJM_Peaks Finished' | systemd-cat -t PJM_Peaks.py")
