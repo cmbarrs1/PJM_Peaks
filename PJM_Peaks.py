@@ -5,8 +5,10 @@ COMED RTO for purposes of reducting capacity charge"""
 import sys
 import traceback
 import logging
+import os
 from os import path
 import json
+import time
 from csv import DictReader
 from csv import DictWriter
 from datetime import datetime
@@ -173,7 +175,7 @@ def prediction_algorithm(RTO, load_data, peak_loads, multiplier, peak_file_path)
                             if cur_max > peaks[y]:
                                 _logger.info('Peak')
                                 if x == len(load_data)-1: #check if latest iteration
-                                    pass
+                                    sendtxt('Peak', msg)
                                     #here will will send text or dow whatever
                                 peaks.insert(y,cur_max)
                                 _logger.debug('Peaks after insert %s', peaks)
@@ -198,7 +200,7 @@ if __name__=="__main__":
                         format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
                         filename='/home/chris/python_scripts/production/logs/main_log.log',
                         filemode='a')
-
+    os.system("echo 'PJM_Peaks Started' | systemd-cat -t PJM_Peaks.py")
     lookback_raw=(list(filter(lambda x: '--lookback' in x, sys.argv)))#check if --lookback is in sys.argv
     if lookback_raw: #if lookback_raw has elements, will evaluate as true
         lookback_raw_str=lookback_raw[0]
@@ -210,7 +212,7 @@ if __name__=="__main__":
     load_data_file ='/home/chris/python_scripts/production/data/PjmCurrentLoads.csv'
     status_file='/home/chris/python_scripts/production/data/Peak_Status.json'
     SLOPE_MULTIPLIER = 1.03
-
+    time.sleep(60)
     if not file_check(peak_load_file): #check if peak load file exists, if not create file
         prelim_loads(peak_load_file) #create new load file
     peak_loads=import_basic_json(peak_load_file) #import peak load file
@@ -226,3 +228,4 @@ if __name__=="__main__":
     peak_loads=peak_load_cleanup('COMED Zone',peak_loads,load_data)
     prediction_algorithm('PJM RTO Total', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
     prediction_algorithm('COMED Zone', load_data, peak_loads, SLOPE_MULTIPLIER,peak_load_file)
+    os.system("echo 'PJM_Peaks Finished' | systemd-cat -t PJM_Peaks.py")
